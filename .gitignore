@@ -1,0 +1,11 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs/WindowMonitor/v14
+/Core/bin/x86/Debug
+/Core/obj
+/GUI/bin
+/GUI/obj
+/WindowMonitor.VC.db
+/WindowMonitor.VC.VC.opendb
