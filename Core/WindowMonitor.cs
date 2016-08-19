@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reactive.Linq;
+using System.Reactive.Subjects;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -23,7 +25,10 @@ namespace Core
         private readonly List<GCHandle> callbackHandles = new List<GCHandle>();
         private string activeWindowTitle = "";
         private const int MaximumTitleLength = 256;
-        public event EventHandler<string> WindowChanged;
+
+        //create RX observables for the event stream rather than classic .NET events
+        private Subject<string> windowTitlesSubject = new Subject<string>();
+        public IObservable<string> WindowTitles { get { return windowTitlesSubject.AsObservable(); } }
 
         public WindowMonitor()
         {
@@ -43,20 +48,30 @@ namespace Core
             SetWinEventHook((uint)eventConstant, (uint)eventConstant, IntPtr.Zero,
                            eventCallback, 0, 0, (uint)(SetWinEventHookParameter.WINEVENT_OUTOFCONTEXT | SetWinEventHookParameter.WINEVENT_SKIPOWNPROCESS));
 
-            
+
         }
 
         private void WindowsEventCallback(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
         {
-            if (IsNotForegroundSwitchEvent(eventType) && IsNotFromWindowObject(idObject))
-                return;
-            string currentWindowTitle = GetActiveWindowTitle();
-            lock (activeWindowTitle)
-                if (currentWindowTitle != string.Empty && activeWindowTitle != currentWindowTitle)
-                {
-                    WindowChanged?.Invoke(this, currentWindowTitle);
-                    activeWindowTitle = currentWindowTitle;
-                }
+            try
+            {
+                if (IsNotForegroundSwitchEvent(eventType) && IsNotFromWindowObject(idObject))
+                    return;
+
+                string currentWindowTitle = GetActiveWindowTitle();
+                lock (activeWindowTitle)
+                    if (currentWindowTitle != string.Empty && activeWindowTitle != currentWindowTitle)
+                    {
+                        //bubble window title up to observable
+                        windowTitlesSubject.OnNext(currentWindowTitle);
+                        activeWindowTitle = currentWindowTitle;
+                    }
+            }
+            catch (Exception ex)
+            {
+                //bubble exception up to observable
+                windowTitlesSubject.OnError(ex);
+            }
         }
 
         private static bool IsNotFromWindowObject(int idObject)
@@ -66,7 +81,7 @@ namespace Core
 
         private static bool IsNotForegroundSwitchEvent(uint eventType)
         {
-            return (EventConstants) eventType != EventConstants.EVENT_SYSTEM_FOREGROUND;
+            return (EventConstants)eventType != EventConstants.EVENT_SYSTEM_FOREGROUND;
         }
 
         public string GetActiveWindowTitle()
